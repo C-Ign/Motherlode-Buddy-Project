@@ -1,0 +1,72 @@
+{
+	
+	"AreaKurMountains": {
+		"Anchors":[
+		{
+			"X": 831.451477,
+			"Z": 3488.926025,
+			"ImageX": 3018,
+			"ImageZ": 3238
+		},
+		{
+			"X": 1676.990723,
+			"Z": 548.788513,
+			"ImageX": 2174,
+			"ImageZ": 299
+		}
+		],
+		"Landmarks":[
+			{
+				"Name": "A long journey through the mountains leads to the warmer lands of Eltibule",
+				"X": 831.451477,
+				"Z": 3488.926025
+			}
+		]
+	},
+	"AreaDesert1": {
+		"Anchors":[
+		{
+			"X": 831.451477,
+			"Z": 3488.926025,
+			"ImageX": 3018,
+			"ImageZ": 3238
+		},
+		{
+			"X": 1676.990723,
+			"Z": 548.788513,
+			"ImageX": 2174,
+			"ImageZ": 299
+		}
+		],
+		"Landmarks":[
+			{
+				"Name": "A",
+				"X": 831.451477,
+				"Z": 3488.926025
+			}
+		]
+	},
+	"AreaGazluk": {
+		"Anchors":[
+		{
+			"X": 831.451477,
+			"Z": 3488.926025,
+			"ImageX": 3018,
+			"ImageZ": 3238
+		},
+		{
+			"X": 1676.990723,
+			"Z": 548.788513,
+			"ImageX": 2174,
+			"ImageZ": 299
+		}
+		],
+		"Landmarks":[
+			{
+				"Name": "B",
+				"X": 831.451477,
+				"Z": 3488.926025
+			}
+		]
+	}
+}
