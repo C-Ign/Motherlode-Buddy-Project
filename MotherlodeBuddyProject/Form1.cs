@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Data;
 using System.Drawing;
 using System.Drawing.Text;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -12,8 +13,10 @@ using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Text.RegularExpressions;
 
 namespace MotherlodeBuddyProject
 {
@@ -26,25 +29,23 @@ namespace MotherlodeBuddyProject
     }
     public partial class Form1 : Form
     {
-        private float mapScaleFactorWidth;
-        private float mapScaleFactorHeight;
+        private float mapScaleRatioWidth;
+        private float mapScaleRatioHeight;
         private float mapZoomFactor = 1;
         private bool mousePressed;
+        private bool calculatePaintMotherlodePositions;
         private float offsetX;
         private float offsetZ;
-        private bool mirroredX;
-        private bool mirroredZ;
         private SupportedMaps currentArea;
         private Image currentImageOriginal;
         private Point lastMouseLocation;
         private AreaDatabase areaDatabase;
-
+        private List<Motherlode> motherlodes = new List<Motherlode>();
 
         public Form1()
         {
             InitializeComponent();
             SizeChanged += Form1_SizeChanged;
-            
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -54,6 +55,8 @@ namespace MotherlodeBuddyProject
             mapPreviewImageContainer.MouseUp += mapPreviewImage_MouseUp;
             mapPreviewImageContainer.MouseWheel += mapPreviewImage_MouseWheel;
             mapPreviewImageContainer.Paint += mapPreviewImage_Paint;
+            checkedListBox2.ItemCheck += checkedListBox2_ItemCheck;
+            button1.Click += listBox1_SelectedIndexChanged;
             string jsonString = Encoding.UTF8.GetString(Resources.LandmarksJSON);
             areaDatabase = new AreaDatabase();
             areaDatabase.DeserializeLandmarks();
@@ -63,8 +66,9 @@ namespace MotherlodeBuddyProject
         {
             if (mapPreviewImageContainer.Image == null) return;
 
-            RefreshMapVariables();
-            ClampOffset();
+            mapScaleRatioWidth = mapPreviewImageContainer.Width/mapPreviewImageContainer.Height;
+            mapScaleRatioHeight = mapPreviewImageContainer.Height/mapPreviewImageContainer.Width;
+
             mapPreviewImageContainer.Invalidate();
 
         }
@@ -79,6 +83,7 @@ namespace MotherlodeBuddyProject
             {
                 mapPreviewImageContainer.Image.Dispose();
                 mapPreviewImageContainer.Invalidate();
+                checkedListBox2.Items.Clear();
             }
 
             switch (comboBox1.SelectedIndex)
@@ -87,32 +92,23 @@ namespace MotherlodeBuddyProject
                     mapPreviewImageContainer.Image = Resources.Map_AreaKurMountains;
                     currentImageOriginal = mapPreviewImageContainer.Image;
                     currentArea = SupportedMaps.AreaKurMountains;
-                    mirroredX = true;
                     break;
                 case 1:
                     mapPreviewImageContainer.Image = Resources.Map_AreaDesert1;
                     currentImageOriginal = mapPreviewImageContainer.Image;
                     currentArea = SupportedMaps.AreaDesert1;
-                    mirroredZ = true;
                     break;
                 case 2:
                     mapPreviewImageContainer.Image = Resources.Map_AreaGazluk;
                     currentImageOriginal = mapPreviewImageContainer.Image;
                     currentArea = SupportedMaps.AreaGazluk;
-                    mirroredZ = true;
                     break;
                 default:
                     break;
             }
-            RefreshMapVariables();
-            ClampOffset();
-        }
-        private void RefreshMapVariables()
-        {
-            mapScaleFactorWidth = (float)(mapPreviewImageContainer.Width) / (float)(currentImageOriginal.Width);
 
-            mapScaleFactorHeight = (float)(mapPreviewImageContainer.Height) / (float)(currentImageOriginal.Height);
-
+            foreach(Landmark landmark in areaDatabase.allAreasData[currentArea.ToString()].ToList())
+                checkedListBox2.Items.Add(landmark.Name);
         }
         private void mapPreviewImage_MouseDown(object sender, MouseEventArgs e)
         {
@@ -131,179 +127,324 @@ namespace MotherlodeBuddyProject
         }
         private void mapPreviewImage_MouseMove(object sender, MouseEventArgs e)
         {
-            if (mapPreviewImageContainer.Image == null) return;
-            MouseEventArgs mouse = e;
-            label4.Text = "Mouse location X:"+mouse.Location.X.ToString()+" Y:"+mouse.Location.Y.ToString();
-            float xReal;
-            float zReal;
-            if (mirroredX)
-            {
-                xReal = mouse.Location.X / mapScaleFactorWidth;
-                xReal = currentImageOriginal.Width - xReal;
-            }
-            else
-                xReal = mouse.Location.X / mapScaleFactorWidth;
-
-            if (mirroredZ)
-            {
-                zReal = mouse.Location.Y / mapScaleFactorHeight;
-                zReal = currentImageOriginal.Width - zReal;
-            }
-            else
-                zReal = mouse.Location.Y / mapScaleFactorHeight;
-
-
-            label5.Text = "World location X:"+xReal.ToString()+" Z:"+ zReal.ToString();
-
-            if (!mousePressed || mapZoomFactor == mapScaleFactorWidth || mapZoomFactor == mapScaleFactorHeight) return;
-
-
-            int deltaX = mouse.Location.X - lastMouseLocation.X;
-            int deltaY = mouse.Location.Y - lastMouseLocation.Y;
-
-            offsetX += deltaX;
-            offsetZ += deltaY;
-            ClampOffset();
-
-
-            lastMouseLocation = mouse.Location;
-            mapPreviewImageContainer.Invalidate();
+            
         }
-        private void ClampOffset()
+
+        public static Point TranslateImagePointToControl(Point imagePoint, PictureBox pictureBox)
         {
-            float newWidth = currentImageOriginal.Width * mapZoomFactor;
-            float newHeight = currentImageOriginal.Height * mapZoomFactor;
+            if (pictureBox.Image == null)
+            {
+                return imagePoint;
+            }
 
-            float minX = mapPreviewImageContainer.Width - newWidth;
-            float minY = mapPreviewImageContainer.Height - newHeight;
+            double scaleWidth = (double)pictureBox.ClientSize.Width / pictureBox.Image.Width;
+            double scaleHeight = (double)pictureBox.ClientSize.Height / pictureBox.Image.Height;
 
-            if (newWidth > mapPreviewImageContainer.Width)
-                offsetX = Math.Max(minX, Math.Min(0, offsetX));
-            else
-                offsetX = (mapPreviewImageContainer.Width - newWidth) / 2;
+            double scale = Math.Min(scaleWidth, scaleHeight);
 
-            if (newHeight > mapPreviewImageContainer.Height)
-                offsetZ = Math.Max(minY, Math.Min(0, offsetZ));
-            else
-                offsetZ = (mapPreviewImageContainer.Height - newHeight) / 2;
+            double displayWidth = pictureBox.Image.Width * scale;
+            double displayHeight = pictureBox.Image.Height * scale;
 
+            double offsetX = (pictureBox.ClientSize.Width - displayWidth) / 2.0;
+            double offsetY = (pictureBox.ClientSize.Height - displayHeight) / 2.0;
 
+            int translatedX = (int)Math.Round(imagePoint.X * scale + offsetX);
+            int translatedY = (int)Math.Round(imagePoint.Y * scale + offsetY);
+
+            return new Point(translatedX, translatedY);
         }
         private void mapPreviewImage_MouseWheel(object sender, MouseEventArgs e)
         {
             if (mapPreviewImageContainer.Image == null) return;
-
+            return;
             if (e.Delta > 0)
                 mapZoomFactor += 0.1f;
 
             if (e.Delta < 0)
                 mapZoomFactor = Math.Max(mapZoomFactor - 0.1f, 1f);
 
-            
-
-            ClampOffset();
             mapPreviewImageContainer.Invalidate();
 
         }
 
-        //private void mapPreviewImage_Paint(object sender, PaintEventArgs e)
-        //{
-        //    if (mapPreviewImageContainer.Image == null) return;
-
-
-        //    float newWidth = currentImageOriginal.Width * mapZoomFactor;
-        //    float newHeight = currentImageOriginal.Height * mapZoomFactor;
-
-        //    RectangleF destRect = new RectangleF(offsetX, offsetZ, newWidth, newHeight);
-        //    RectangleF srcRect = new RectangleF(0, 0, currentImageOriginal.Width,   currentImageOriginal.Height);
-
-
-        //    e.Graphics.DrawImage(currentImageOriginal, destRect, srcRect, GraphicsUnit.Pixel);
-        //    Brush pointBrush = new SolidBrush(Color.Red);
-
-        //    foreach (var landmark in areaDatabase.allAreasData[currentArea.ToString()].Landmarks)
-        //    {
-        //        PointF originalPixel = GetWorldPixelCoordinates(landmark.WorldXCoordinate, landmark.WorldZCoordinate);
-
-        //        PointF screenPixel = GetScreenCoordinates(originalPixel, mapZoomFactor, offsetX, offsetZ);
-
-        //        e.Graphics.FillEllipse(pointBrush, originalPixel.X - 5, originalPixel.Y - 5, 10, 10);
-        //    }
-
-        //    pointBrush.Dispose();
-        //}
+        
         private void mapPreviewImage_Paint(object sender, PaintEventArgs e)
         {
             if (mapPreviewImageContainer.Image == null) return;
-            RectangleF srcRect = new RectangleF(0, 0, currentImageOriginal.Width * mapScaleFactorWidth, currentImageOriginal.Height * mapScaleFactorHeight);
+            RectangleF srcRect = new RectangleF(0, 0, currentImageOriginal.Width * mapScaleRatioWidth, currentImageOriginal.Height * mapScaleRatioHeight);
 
 
             e.Graphics.DrawImage(currentImageOriginal, srcRect);
-            Brush pointBrush = new SolidBrush(Color.Red);
+            Pen pointPen = new Pen(Color.Red);
+            SolidBrush pointBrush = new SolidBrush(Color.White);
+            Font font = new Font("Times New Roman", 11f);
 
-            foreach (var landmark in areaDatabase.allAreasData[currentArea.ToString()].Landmarks)
+            List<Landmark> landmarks = areaDatabase.allAreasData[currentArea.ToString()].ToList();
+
+            foreach (Landmark landmark in landmarks)
             {
-                PointF originalPixel = GetWorldPixelCoordinates(landmark.WorldXCoordinate, landmark.WorldZCoordinate);
+                var (pointXWorld, pointZWorld) = LocationExtractor.ExtractXZ(landmark.WorldLocation);
 
-                //PointF screenPixel = GetScreenCoordinates(originalPixel, mapZoomFactor, offsetX, offsetZ);
+                Point point = TranslateImagePointToControl(new Point((int)pointXWorld, (int)pointZWorld), mapPreviewImageContainer);
 
-                e.Graphics.FillEllipse(pointBrush, originalPixel.X - 5, originalPixel.Y - 5, 10, 10);
+                e.Graphics.DrawEllipse(pointPen, point.X - 1.25f, point.Y - 1.25f, 2.5f, 2.5f);
+                e.Graphics.DrawString(landmark.Name, font, pointBrush, point);
             }
 
-            pointBrush.Dispose();
-        }
-        public PointF GetWorldPixelCoordinates(float worldX, float worldZ)
-        {
-            float pixelX = worldX * ((mapPreviewImageContainer.Width) / (currentImageOriginal.Width));
-            float pixelZ = worldZ * ((mapPreviewImageContainer.Height) / (currentImageOriginal.Height));
+            if (calculatePaintMotherlodePositions)
+            {
+                Pen pen = new Pen(Color.Blue);
+                int i = 0;
+                foreach(Motherlode motherlode in motherlodes)
+                {
+                    Point motherlodePosition = motherlode.CalculateMotherlodeLocation();
 
-            return new PointF(pixelX, pixelZ);
-        }
-        public PointF GetScreenCoordinates(PointF originalPixel, float zoomFactor, float viewOffsetX, float viewOffsetY)
-        {
-            float screenX = (originalPixel.X * zoomFactor) + viewOffsetX;
-            float screenY = (originalPixel.Y * zoomFactor) + viewOffsetY;
 
-            return new PointF(screenX, screenY);
+                    e.Graphics.DrawEllipse(pen, motherlodePosition.X - 1.25f, motherlodePosition.Y - 1.25f, 2.5f, 2.5f);
+                    e.Graphics.DrawString(listBox1.Items[i].ToString(), font, pointBrush, motherlodePosition);
+                    i++;
+                }
+
+
+            }
+
+            pointPen.Dispose();
         }
-        private void placeKnownLandmarks(string areaName, PaintEventArgs e)
+
+        private void listBox2_SelectedIndexChanged(object sender, EventArgs e)
         {
-            Pen whitePen = new Pen(Brushes.White);
             
+
+            
+        }
+
+        private void numericUpDown1_ValueChanged(object sender, EventArgs e)
+        {
+            int targetCount = (int)numericUpDown1.Value;
+            int itemsToAdd = targetCount - motherlodes.Count;
+            int itemsToRemove = motherlodes.Count - targetCount;
+            if (targetCount > 0)
+                checkedListBox2.SelectionMode = SelectionMode.One;
+            else
+                checkedListBox2.SelectionMode = SelectionMode.None;
+
+            if (motherlodes.Count == 0)
+            {
+                for (int i = (int)numericUpDown1.Value; i > motherlodes.Count; i--)
+                {
+                    motherlodes.Add(new Motherlode());
+                    listBox1.Items.Add("Motherlode " + i);
+                }
+                return;
+            }
+
+            if (itemsToRemove > 0)
+            {
+                for(int i = 0; i < itemsToRemove; i++)
+                {
+                    motherlodes.RemoveAt(motherlodes.Count - 1);
+                }
+            }
+            else if(itemsToAdd > 0)
+            {
+                Motherlode templateMotherlode = motherlodes[motherlodes.Count - 1];
+
+                for (int i = 0; i < itemsToAdd; i++)
+                {
+                    Motherlode newMotherlode = new Motherlode();
+
+                    if (templateMotherlode.referencePoint1 != null)
+                        newMotherlode.referencePoint1 = templateMotherlode.referencePoint1.Clone();
+
+                    if (templateMotherlode.referencePoint2 != null)
+                        newMotherlode.referencePoint2 = templateMotherlode.referencePoint2.Clone();
+
+                    if (templateMotherlode.referencePoint3 != null)
+                        newMotherlode.referencePoint3 = templateMotherlode.referencePoint3.Clone();
+
+                    motherlodes.Add(newMotherlode);
+                }
+            }
+
+                listBox1.Items.Clear();
+            for (int i=1; numericUpDown1.Value + 1 > i; i++) 
+                listBox1.Items.Add("Motherlode "+i);
+        }
+        private void listBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (listBox1.SelectedIndex == -1)
+                listBox1.SelectedIndex = listBox1.Items.Count - 1;
+
+            if (motherlodes[listBox1.SelectedIndex].referencePoint1 == null)
+                numericUpDown2.Value = 0;
+            else
+                numericUpDown2.Value = motherlodes[listBox1.SelectedIndex].referencePoint1.GetDistance();
+
+            if (motherlodes[listBox1.SelectedIndex].referencePoint2 == null)
+                numericUpDown3.Value = 0;
+            else
+                numericUpDown3.Value = motherlodes[listBox1.SelectedIndex].referencePoint2.GetDistance();
+
+            if (motherlodes[listBox1.SelectedIndex].referencePoint3 == null)
+                numericUpDown4.Value = 0;
+            else
+                numericUpDown4.Value = motherlodes[listBox1.SelectedIndex].referencePoint3.GetDistance();
+        }
+
+        private void tableLayoutPanel4_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
+
+        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+
+        }
+
+        private void tableLayoutPanel1_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
+        private void checkedListBox2_ItemCheck(object sender, ItemCheckEventArgs e)
+        {
+            if (e.NewValue == CheckState.Checked)
+            {
+                if (checkedListBox2.CheckedItems.Count >= 3)
+                {
+                    e.NewValue = CheckState.Unchecked;
+                    return;
+                }
+            }
+
+            foreach(Motherlode motherlode in motherlodes)
+            {
+                Landmark relatedLandmark = areaDatabase.allAreasData[currentArea.ToString()][e.Index];
+                if (e.NewValue == CheckState.Checked)
+                {
+                    if (motherlode.referencePoint1 == null)
+                    {
+                        motherlode.referencePoint1 = new Circle(0,relatedLandmark);
+                        label6.Text = relatedLandmark.Name.ToString();
+                    }
+                    else if (motherlode.referencePoint2 == null)
+                    {
+                        motherlode.referencePoint2 = new Circle(0, relatedLandmark);
+                        label7.Text = relatedLandmark.Name.ToString();
+                    }
+                    else if (motherlode.referencePoint3 == null)
+                    {
+                        motherlode.referencePoint3 = new Circle(0, relatedLandmark);
+                        label8.Text = relatedLandmark.Name.ToString();
+                    }
+                }
+                if (e.NewValue == CheckState.Unchecked)
+                {
+                    if(motherlode.referencePoint1 != null && motherlode.referencePoint1.GetLandmark().WorldLocation == relatedLandmark.WorldLocation)
+                    {
+                        motherlode.referencePoint1 = null;
+                        label6.Text = "Reference 1";
+                    }else if (motherlode.referencePoint2 != null && motherlode.referencePoint2.GetLandmark().WorldLocation == relatedLandmark.WorldLocation)
+                    {
+                        motherlode.referencePoint2 = null;
+                        label7.Text = "Reference 2";
+                    }else if (motherlode.referencePoint3 != null && motherlode.referencePoint3.GetLandmark().WorldLocation == relatedLandmark.WorldLocation)
+                    {
+                        motherlode.referencePoint3 = null;
+                        label8.Text = "Reference 3";
+                    }
+                }
+            }
+        }
+
+        private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label6_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void numericUpDown2_ValueChanged(object sender, EventArgs e)
+        {
+            if (motherlodes.Count == 0)
+                return;
+            if (listBox1.SelectedIndex == -1)
+                listBox1.SelectedIndex = listBox1.Items.Count - 1;
+            if (motherlodes[listBox1.SelectedIndex].referencePoint1 == null)
+                return;
+            motherlodes[listBox1.SelectedIndex].referencePoint1.SetDistance((int)numericUpDown2.Value);
+        }
+
+        private void numericUpDown3_ValueChanged(object sender, EventArgs e)
+        {
+            if (motherlodes.Count == 0)
+                return;
+            if (listBox1.SelectedIndex == -1)
+                listBox1.SelectedIndex = listBox1.Items.Count - 1;
+            if (motherlodes[listBox1.SelectedIndex].referencePoint2 == null)
+                return;
+            motherlodes[listBox1.SelectedIndex].referencePoint2.SetDistance((int)numericUpDown3.Value);
+        }
+
+        private void numericUpDown4_ValueChanged(object sender, EventArgs e)
+        {
+            if (motherlodes.Count == 0)
+                return;
+            if (listBox1.SelectedIndex == -1)
+                listBox1.SelectedIndex = listBox1.Items.Count - 1;
+            if (motherlodes[listBox1.SelectedIndex].referencePoint3 == null)
+                return;
+            motherlodes[listBox1.SelectedIndex].referencePoint3.SetDistance((int)numericUpDown4.Value);
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            if(checkedListBox2.CheckedItems.Count < 3)
+            {
+                MessageBox.Show("Select 3 reference points from the reference points table, then set distances for each reference point.", "Missing reference points!");
+                return;
+            }
+            if (motherlodes.Count == 0)
+            {
+                MessageBox.Show("Set the motherlode amount, select 3 reference points from the reference points table and set distances for each reference point.", "No motherlodes!"); 
+                return;
+            }
+            
+            calculatePaintMotherlodePositions = true;
+
+            mapPreviewImageContainer.Invalidate();
+        }
+
+        private void tableLayoutPanel2_Paint(object sender, PaintEventArgs e)
+        {
+
+        }
+
+        private void tableLayoutPanel3_Paint(object sender, PaintEventArgs e)
+        {
+
         }
     }
     public class Landmark 
     {
+        [JsonPropertyName("Desc")]
+        public string Description { get; set; }
         [JsonPropertyName("Name")]
-        public string LandmarkName { get; set;  }
-        [JsonPropertyName("X")]
-        public float WorldXCoordinate { get; set; }
-        [JsonPropertyName("Z")]
-        public float WorldZCoordinate { get; set; }
-    }
-    public class Anchor
-    {
-        [JsonPropertyName("X")]
-        public float WorldXCoordinate { get; set; }
-        [JsonPropertyName("Z")]
-        public float WorldZCoordinate { get; set; }
-        [JsonPropertyName("ImageX")]
-        public int ImageXCoordinate { get; set; }
-        [JsonPropertyName("ImageZ")]
-        public int ImageZCoordinate { get; set; }
-    }
-    public class AreaData
-    {
-        public List<Landmark> Landmarks { get; set; }
-        public List<Anchor> Anchors { get; set; }
+        public string Name { get; set;  }
+        [JsonPropertyName("Loc")]
+        public string WorldLocation { get; set; }
+        [JsonPropertyName("Type")]
+        public string Type { get; set; }
     }
     public class AreaDatabase : ISerializable
     {
-        public Dictionary<string, AreaData> allAreasData;
+        public Dictionary<string, List<Landmark>> allAreasData;
 
         public void DeserializeLandmarks()
         {
-            allAreasData = JsonSerializer.Deserialize<Dictionary<string, AreaData>>(Resources.LandmarksJSON);
+            allAreasData = JsonSerializer.Deserialize<Dictionary<string, List<Landmark>>>(Resources.LandmarksJSON);
         }
 
         public void GetObjectData(SerializationInfo info, StreamingContext context)
@@ -311,5 +452,71 @@ namespace MotherlodeBuddyProject
             return;
         }
     }
+    public static class LocationExtractor
+    {
+        private static readonly Regex XzRegex = new Regex(@"x:\s*([-\d.]+)\s+y:\s*[-\d.]+\s+z:\s*([-\d.]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        public static (double X, double Z) ExtractXZ(string locStr)
+        {
+            Match match = XzRegex.Match(locStr);
+
+            if (match.Success)
+            {
+                double x = double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                double z = double.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+
+                return (x, z);
+            }
+
+            throw new FormatException();
+        }
+    }
+    public class Motherlode
+    {
+        public Circle referencePoint1 { get; set; }
+        public Circle referencePoint2 { get; set; }
+        public Circle referencePoint3 { get; set; }
+
+        public Point CalculateMotherlodeLocation()
+        {
+            int motherlodeX = (int)(1 - Math.Pow(referencePoint2.GetDistance(),2) + Math.Pow(referencePoint1.GetDistance(),2)) / (2);
+            int motherlodeY = (int)(Math.Pow(referencePoint2.GetDistance(), 2) - Math.Pow(referencePoint3.GetDistance(), 2) + 2 * motherlodeX) / (2);
+
+            return new Point(motherlodeX, motherlodeY);
+        }
+        public void ClonePointsFrom(Motherlode sourceMotherlode)
+        {
+            referencePoint1 = sourceMotherlode.referencePoint1?.Clone();
+            referencePoint2 = sourceMotherlode.referencePoint2?.Clone();
+            referencePoint3 = sourceMotherlode.referencePoint3?.Clone();
+        }
+    }
+    public class Circle
+    {
+        private int distanceToMotherlode;
+        Landmark referencePoint;
+
+        public Circle(int distance, Landmark referencePoint)
+        {
+            this.distanceToMotherlode = distance;
+            this.referencePoint = referencePoint;
+        }
+
+        public Landmark GetLandmark()
+        {
+            return referencePoint;
+        }
+        public void SetDistance(int distance)
+        {
+            distanceToMotherlode = distance;
+        }
+        public int GetDistance()
+        {
+            return distanceToMotherlode;
+        }
+        public Circle Clone()
+        {
+            return new Circle(0, this.referencePoint);
+        }
+    }
 }
