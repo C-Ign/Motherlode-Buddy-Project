@@ -197,10 +197,10 @@ namespace MotherlodeBuddyProject
                 int i = 0;
                 foreach(Motherlode motherlode in motherlodes)
                 {
-                    Point motherlodePosition = motherlode.CalculateMotherlodeLocation();
+                    Point motherlodePosition = CalculateMotherlodeLocation(motherlode);
+                    Point positionTranslated = TranslateImagePointToControl(new Point((int)motherlodePosition.X, (int)motherlodePosition.Y), mapPreviewImageContainer);
 
-
-                    e.Graphics.DrawEllipse(pen, motherlodePosition.X - 1.25f, motherlodePosition.Y - 1.25f, 2.5f, 2.5f);
+                    e.Graphics.DrawEllipse(pen, positionTranslated.X - 1.25f, positionTranslated.Y - 1.25f, 2.5f, 2.5f);
                     e.Graphics.DrawString(listBox1.Items[i].ToString(), font, pointBrush, motherlodePosition);
                     i++;
                 }
@@ -426,6 +426,28 @@ namespace MotherlodeBuddyProject
         {
 
         }
+        public Point CalculateMotherlodeLocation(Motherlode motherlode)
+        {
+            Point point1 = motherlode.referencePoint1.GetLandmarkLocation();
+            Point point2 = motherlode.referencePoint2.GetLandmarkLocation();
+            Point point3 = motherlode.referencePoint3.GetLandmarkLocation();
+            int distance1 = motherlode.referencePoint1.GetDistance();
+            int distance2 = motherlode.referencePoint2.GetDistance();
+            int distance3 = motherlode.referencePoint3.GetDistance();
+
+            float a = 2 * point2.X - 2 * point1.X;
+            float b = 2 * point2.Y - 2 * point1.Y;
+            float c = (float)(Math.Pow(distance1, 2) - Math.Pow(distance2, 2) - Math.Pow(point1.X, 2) + Math.Pow(point2.X, 2) - Math.Pow(point1.Y, 2) + Math.Pow(point2.Y, 2));
+
+            float d = 2 * point3.X - 2 * point1.X;
+            float e = 2 * point3.Y - 2 * point1.Y;
+            float f = (float)(Math.Pow(distance1, 2) - Math.Pow(distance3, 2) - Math.Pow(point1.X, 2) + Math.Pow(point3.X, 2) - Math.Pow(point1.Y, 2) + Math.Pow(point3.Y, 2));
+
+            float X = (c*e - f*b) / (e*a - b*d);
+            float Y = (c*d - a * f) / (b * d - a * e);
+
+            return new Point((int)X, (int)Y);
+        }
     }
     public class Landmark 
     {
@@ -477,13 +499,6 @@ namespace MotherlodeBuddyProject
         public Circle referencePoint2 { get; set; }
         public Circle referencePoint3 { get; set; }
 
-        public Point CalculateMotherlodeLocation()
-        {
-            int motherlodeX = (int)(1 - Math.Pow(referencePoint2.GetDistance(),2) + Math.Pow(referencePoint1.GetDistance(),2)) / (2);
-            int motherlodeY = (int)(Math.Pow(referencePoint2.GetDistance(), 2) - Math.Pow(referencePoint3.GetDistance(), 2) + 2 * motherlodeX) / (2);
-
-            return new Point(motherlodeX, motherlodeY);
-        }
         public void ClonePointsFrom(Motherlode sourceMotherlode)
         {
             referencePoint1 = sourceMotherlode.referencePoint1?.Clone();
@@ -505,6 +520,14 @@ namespace MotherlodeBuddyProject
         public Landmark GetLandmark()
         {
             return referencePoint;
+        }
+        public Point GetLandmarkLocation()
+        {
+            var(pointXWorld, pointZWorld) = LocationExtractor.ExtractXZ(referencePoint.WorldLocation);
+
+
+            Point point = new Point((int)pointXWorld, (int)pointZWorld);
+            return point;
         }
         public void SetDistance(int distance)
         {
