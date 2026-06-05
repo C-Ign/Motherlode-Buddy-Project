@@ -83,7 +83,7 @@ namespace MotherlodeBuddyProject
             {
                 mapPreviewImageContainer.Image.Dispose();
                 mapPreviewImageContainer.Invalidate();
-                checkedListBox2.Items.Clear();
+                ClearReferencePointChecklist();
             }
 
             switch (comboBox1.SelectedIndex)
@@ -106,9 +106,10 @@ namespace MotherlodeBuddyProject
                 default:
                     break;
             }
-
-            foreach(Landmark landmark in areaDatabase.allAreasData[currentArea.ToString()].ToList())
-                checkedListBox2.Items.Add(landmark.Name);
+            
+            if (listBox1.Items.Count == 0)
+                return;
+            PopulateReferencePointChecklist();
         }
         private void mapPreviewImage_MouseDown(object sender, MouseEventArgs e)
         {
@@ -120,6 +121,18 @@ namespace MotherlodeBuddyProject
                 mousePressed = true;
                 lastMouseLocation = mouse.Location;
             }
+        }
+        private void ClearReferencePointChecklist()
+        {
+            checkedListBox2.Items.Clear();
+        }
+        private void PopulateReferencePointChecklist()
+        {
+            if(checkedListBox2.Items.Count == 0)
+                ClearReferencePointChecklist();
+
+            foreach (Landmark landmark in areaDatabase.allAreasData[currentArea.ToString()].ToList())
+                checkedListBox2.Items.Add(landmark.Name);
         }
         private void mapPreviewImage_MouseUp(object sender, MouseEventArgs e)
         {
@@ -201,7 +214,7 @@ namespace MotherlodeBuddyProject
                     Point positionTranslated = TranslateImagePointToControl(new Point((int)motherlodePosition.X, (int)motherlodePosition.Y), mapPreviewImageContainer);
 
                     e.Graphics.DrawEllipse(pen, positionTranslated.X - 1.25f, positionTranslated.Y - 1.25f, 2.5f, 2.5f);
-                    e.Graphics.DrawString(listBox1.Items[i].ToString(), font, pointBrush, motherlodePosition);
+                    e.Graphics.DrawString(listBox1.Items[i].ToString(), font, pointBrush, positionTranslated);
                     i++;
                 }
 
@@ -220,13 +233,13 @@ namespace MotherlodeBuddyProject
 
         private void numericUpDown1_ValueChanged(object sender, EventArgs e)
         {
+            if (comboBox1.SelectedIndex == -1) return;
+
             int targetCount = (int)numericUpDown1.Value;
             int itemsToAdd = targetCount - motherlodes.Count;
             int itemsToRemove = motherlodes.Count - targetCount;
-            if (targetCount > 0)
-                checkedListBox2.SelectionMode = SelectionMode.One;
-            else
-                checkedListBox2.SelectionMode = SelectionMode.None;
+            if (targetCount > 0 && listBox1.Items.Count == 0)
+                PopulateReferencePointChecklist();
 
             if (motherlodes.Count == 0)
             {
@@ -266,7 +279,10 @@ namespace MotherlodeBuddyProject
                 }
             }
 
-                listBox1.Items.Clear();
+            if(motherlodes.Count == 0 && numericUpDown1.Value == 0)
+                ClearReferencePointChecklist();
+
+            listBox1.Items.Clear();
             for (int i=1; numericUpDown1.Value + 1 > i; i++) 
                 listBox1.Items.Add("Motherlode "+i);
         }
@@ -315,6 +331,7 @@ namespace MotherlodeBuddyProject
                     return;
                 }
             }
+
 
             foreach(Motherlode motherlode in motherlodes)
             {
@@ -447,6 +464,35 @@ namespace MotherlodeBuddyProject
             float Y = (c*d - a * f) / (b * d - a * e);
 
             return new Point((int)X, (int)Y);
+        }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            var confirmResult = MessageBox.Show("This function will delete ALL motherlodes you added, as well as reset reference points! Choose OK to proceed.", "Caution! Nuclear option!", MessageBoxButtons.OKCancel);
+            if (confirmResult == DialogResult.Cancel)
+                return;
+
+            numericUpDown1.Value = 0;
+            listBox1.Items.Clear();
+            checkedListBox2.Items.Clear();
+            motherlodes.Clear();
+
+            label6.Text = "Reference 1";
+            label7.Text = "Reference 2";
+            label8.Text = "Reference 3";
+
+            calculatePaintMotherlodePositions = false;
+            mapPreviewImageContainer.Invalidate();
         }
     }
     public class Landmark 
