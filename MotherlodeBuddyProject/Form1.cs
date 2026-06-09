@@ -468,6 +468,13 @@ namespace MotherlodeBuddyProject
 
         private void button4_Click(object sender, EventArgs e)
         {
+            SettingsForm settings = new SettingsForm();
+            switch (settings.ShowDialog())
+            {
+                case DialogResult.OK:
+                    
+                    break;
+            }
 
         }
 
